@@ -81,6 +81,20 @@ using boost::algorithm::join;
 namespace pv {
 namespace toolbars {
 
+static bool device_continuous_enabled(const shared_ptr<sigrok::Device>& sr_dev)
+{
+	if (!sr_dev || !sr_dev->config_check(ConfigKey::CONTINUOUS, Capability::GET))
+		return false;
+
+	try {
+		auto gvar = sr_dev->config_get(ConfigKey::CONTINUOUS);
+		return g_variant_get_boolean(gvar.gobj());
+	} catch (Error& error) {
+		qDebug() << QObject::tr("Failed to get continuous mode:") << error.what();
+		return false;
+	}
+}
+
 const uint64_t MainBar::MinSampleCount = 100ULL;
 const uint64_t MainBar::MaxSampleCount = 1000000000000ULL;
 const uint64_t MainBar::DefaultSampleCount = 1000000;
@@ -469,9 +483,13 @@ void MainBar::update_sample_count_selector()
 		return;
 
 	const shared_ptr<sigrok::Device> sr_dev = device->device();
+	const bool continuous = device_continuous_enabled(sr_dev);
 
 	assert(!updating_sample_count_);
 	updating_sample_count_ = true;
+
+	sample_count_supported_ = !continuous &&
+		sr_dev->config_check(ConfigKey::LIMIT_SAMPLES, Capability::SET);
 
 	if (!sample_count_supported_) {
 		sample_count_.show_none();
@@ -556,7 +574,8 @@ void MainBar::update_device_config_widgets()
 	// Update supported options.
 	sample_count_supported_ = false;
 
-	if (sr_dev->config_check(ConfigKey::LIMIT_SAMPLES, Capability::SET))
+	if (!device_continuous_enabled(sr_dev) &&
+		sr_dev->config_check(ConfigKey::LIMIT_SAMPLES, Capability::SET))
 		sample_count_supported_ = true;
 
 	// Add notification of reconfigure events
@@ -605,6 +624,11 @@ void MainBar::commit_sample_count()
 		return;
 
 	const shared_ptr<sigrok::Device> sr_dev = device->device();
+
+	if (device_continuous_enabled(sr_dev)) {
+		update_sample_count_selector();
+		return;
+	}
 
 	sample_count = sample_count_.value();
 	if (sample_count_supported_) {
