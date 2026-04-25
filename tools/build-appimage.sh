@@ -113,12 +113,22 @@ prepare_appdir() {
 set -euo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-APPDIR="$(cd -- "$HERE/../.." && pwd)"
+
+if [[ -x "$HERE/pulseview.real" ]]; then
+  APPDIR="$(cd -- "$HERE/../.." && pwd)"
+  REAL_BINARY="$HERE/pulseview.real"
+elif [[ -x "$HERE/usr/bin/pulseview.real" ]]; then
+  APPDIR="$HERE"
+  REAL_BINARY="$APPDIR/usr/bin/pulseview.real"
+else
+  echo "Unable to locate pulseview.real from $HERE." >&2
+  exit 127
+fi
 
 export SIGROKDECODE_DIR="$APPDIR/usr/share/libsigrokdecode/decoders${SIGROKDECODE_DIR:+:$SIGROKDECODE_DIR}"
 export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-exec "$HERE/pulseview.real" "$@"
+exec "$REAL_BINARY" "$@"
 EOF_WRAPPER
   chmod +x "$APPDIR/usr/bin/pulseview"
 
